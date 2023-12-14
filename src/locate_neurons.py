@@ -11,33 +11,35 @@ from skimage.morphology import skeletonize, dilation, binary_erosion, disk
 from skimage.measure import label, regionprops
 
 def is_close(target_item, item, thresh):
+    """ 
+    function to evaluate if two points are closely located depending on a distance threshold. 
+    ----------
+    target_item : tuple
+        first set of x,y-coordinates for comparison
+    item : tuple
+        second set of x,y-coordinates for comparison
+    thresh : float
+        distance threshold, if true the points are considered closely located
+    """
     return math.dist(target_item, item)<=thresh
     
 def remove_close_neighbors(input_list, thresh, position):
-    target_item = input_list[position]
-    return [item for i, item in enumerate(input_list) if i == position or not is_close(target_item, item, thresh)]
-
-def remove_close_neighbors(input_list, thresh, position):
     """ 
-    Create a timeseries appropriate to feed through the machine learning models.
-    The function acts as a rolling window where every time point prediction x(t+1) 
-    follows the time series x(t - n). 
+    function to detech closely located points. 
     ----------
     input_list : list
-        Default value for the different time dimension, in this case it's 4 for PEF, FEV1, FVC and x
-    thresh : numeric
-        Ratio for at which point to make the split, default is 33%
+        list of all x,y-coordinates
+    thresh : float
+        distance threshold
     position : int
-        Ratio for at which point to make the split, default is 33%
+        one set of x,y-coordinates for which the distance is determined
     """
     target_item = input_list[position]
     return [item for i, item in enumerate(input_list) if i == position or not is_close(target_item, item, thresh)]
 
 def clean_up_results(input_list, threshold):
     """ 
-    Create a timeseries appropriate to feed through the machine learning models.
-    The function acts as a rolling window where every time point prediction x(t+1) 
-    follows the time series x(t - n). 
+    Function to clean up very closely located points. 
     ----------
     input_list : list
         Default value for the different time dimension, in this case it's 4 for PEF, FEV1, FVC and x
@@ -52,9 +54,7 @@ def clean_up_results(input_list, threshold):
 
 def superimpose_after_rolling(img_c2, img_c1, shift_):
     """ 
-    Create a timeseries appropriate to feed through the machine learning models.
-    The function acts as a rolling window where every time point prediction x(t+1) 
-    follows the time series x(t - n). 
+    Function that calculates the difference between two arrays in positions after applying a shift in x,y-direction on one of the arrays. 
     ----------
     img_c1 : numpy array
         Default value for the different time dimension, in this case it's 4 for PEF, FEV1, FVC and x
@@ -71,39 +71,39 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
          image_smoothing=1.5, image_threshold=.5, displacement=70, 
          node_smoothing = 3., edge_smoothing=1., area_threshold=30):
     """ 
-    Create a timeseries appropriate to feed through the machine learning models.
-    The function acts as a rolling window where every time point prediction x(t+1) 
-    follows the time series x(t - n). 
+    Account for the shift in one of the images and extracting Regions of Interest within the image. 
     ----------
-    fname_x : string
-        Default value for the different time dimension, in this case it's 4 for PEF, FEV1, FVC and x
+    fname : string
+        file path to image files
     reduction : int
-        Ratio for at which point to make the split, default is 33%
+        reduction of the dimensions of the images
     image_smoothing : float
-        Ratio for at which point to make the split, default is 33%
+        sigma for gaussian smoothing of the image
     image_threshold : float
-        Ratio for at which point to make the split, default is 33%
+        image threshold for binary thresholding of the image
     displacement : float
-        Ratio for at which point to make the split, default is 33%
+        max displacement in pixels that is considered for determining the optimal shift
     node_smoothing : float
-        Ratio for at which point to make the split, default is 33%
+        sigma for gaussian smoothing of the detected nodes
     edge_smoothing : float
-        Ratio for at which point to make the split, default is 33%
+        sigma for gaussian smoothing of the detected edges
     area_threshold : int
-        Ratio for at which point to make the split, default is 33%
+        Threshold for filtering out very small region of interest sections
     """
+    # Reading the files
     condition_1 = fname_c1[:-4]
     condition_2 = fname_c2[:-4]
 
     c1 = pd.read_csv(fname_c1).dropna()
     c1 = c1[c1.precisionz.notnull()][['x', 'y', 'precisionx', 'photon-count']]
-
     c2 = pd.read_csv(fname_c2).dropna()
     c2 = c2[c2.precisionz.notnull()][['x', 'y', 'precisionx', 'photon-count']]
-
+    
+    # determining max values
     xmax, ymax = max(c2.x.max(), c1.x.max()), max(c2.y.max(), c1.y.max())
     xmax, ymax = xmax.astype(np.int64), ymax.astype(np.int64)
 
+    # Transform coordinates into arrays (images         
     img_c2 = np.zeros((xmax//reduction+1, ymax//reduction+1))
     img_c1 = np.zeros((xmax//reduction+1, ymax//reduction+1))
 
@@ -113,6 +113,7 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
     for x, y in np.array(c2[['x', 'y']]).astype(np.int64):
         img_c2[x//reduction, y//reduction] +=1
 
+    # Gaussian smoothing and thresholding of both images
     img_c1 = gaussian(img_c1, image_smoothing)
     img_c1 = (img_c1 > image_threshold * threshold_otsu(img_c1)).astype(np.int64)
 
@@ -120,21 +121,26 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
     img_c2 = gaussian(img_c2, image_smoothing)
     img_c2 = (img_c2 > image_threshold * threshold_otsu(img_c2)).astype(np.int64)
 
+    # Determining the shift in x,y-direction between the two images
     s = list(product(range(-displacement, displacement, 1), range(-displacement, displacement, 1)))
     s_min = [superimpose_after_rolling(img_c1, img_c2, s_) for s_ in tqdm(s, leave=False, desc='Superimposing images')]
     shift = np.array(s[np.argmin(s_min)])
     shift *= reduction
 
+    # Correct for shift in image
     c1_shifted = c1.copy()                         
     c1_shifted.x = c1_shifted.x - shift[0]
     c1_shifted.y = c1_shifted.y - shift[1]             
 
+    # connectivity parameters
     dist_thresh = 2.
     connectivity_thresh = 3.
     end_thresh = 1
 
+    # Create skeleton image of image
     skel_c2 = skeletonize(img_c2)
 
+    # Extract nodes and edges from skeleton
     xo, yo = np.where(skel_c2 == 1)
     p = np.stack([xo, yo], axis=1)
     d_mat = distance_matrix(p, p)
@@ -149,6 +155,7 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
     pc.loc[:, 'c'] = connectivity
     pc_ = pc[pc.c >= connectivity_thresh]
 
+    # Clean op closely located nodes
     input_list = np.array(pc_[['x', 'y']])
     processed_list = clean_up_results(input_list, 10)
     pc_rm = pd.DataFrame(processed_list, columns={'x', 'y'})
@@ -159,6 +166,7 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
         xi, yi = row[['x', 'y']]
         node_out[xi, yi] +=1
 
+    # Filter out edges only and label seperately
     node_out_smooth = gaussian(node_out, node_smoothing)
     node_out_pl = gaussian(node_out, 3)
     node_out_smooth = (node_out_smooth > threshold_otsu(node_out_smooth)).astype(np.int32)
@@ -167,8 +175,10 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
     skeleton = gaussian(skel_c2, edge_smoothing) 
     skeleton = (skeleton > threshold_otsu(skeleton)).astype(np.int32)
     edges = (skeleton - node_out_smooth > 0).astype(np.int32)
+    edx, edy = np.where(edges==1)        
     labels = dilation(label(edges), footprint = disk(1))
 
+    # Initialize dataframe
     c1_shifted['condition'] = condition_1
     c2['condition'] = condition_2
     combined_conditions = c1_shifted.append(c2)
@@ -176,8 +186,7 @@ def extract_ROI(fname_c1, fname_c2, reduction=200,
     combined_conditions['xsq'] = combined_conditions.x // reduction
     combined_conditions['ysq'] = combined_conditions.y // reduction
 
-    edx, edy = np.where(edges==1)
-
+    # Label the coordinates in the original dataframe based on the labels array
     count = 1
     for region in tqdm(regionprops(labels), leave=False, desc='Selection ROIs'):
         if region.area > area_threshold:
