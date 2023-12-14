@@ -24,6 +24,8 @@ pip install -e .   # install package using setup.py in editable mode
 python test.py -c1 /path/to/first/condition -c2 /path/to/second/condition -o /output/path/
 ```
 
+Copyright
+-------------
 Copyright (c) 2023 Selle Bandstra <sba@zedat.fu-berlin.de>
 All rights reserved.
 Redistribution and use in source and binary forms, with or without
