@@ -21,5 +21,5 @@ pip install -e .   # install package using setup.py in editable mode
 ```
 * Then run the tests using 
 ```
-python test.py -c2 /path/to/first/condition -c1 /path/to/second/condition -o /output/path/
+python test.py -c1 /path/to/first/condition -c2 /path/to/second/condition -o /output/path/
 ``` 
