@@ -1,6 +1,5 @@
-# stripe_finder
 
-python_project_example
+Stripe finder
 =====================
 
 Simple python package for detecting periodically appearing actin barriers within human neuron cells.
